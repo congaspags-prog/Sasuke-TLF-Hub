@@ -582,69 +582,78 @@ local function showEsp(p)
     ob.high.OutlineColor = c
 end
 
--- Target lock; somente camera local e calculo de tela.
-local function targetData(camera, other)
-    if other==localPlayer or (settings.teamCheck and isFriend(other)) then return nil end
-    local char,hum,root=validCharacter(other)
+-- Camera aim V1.1: captura dentro do FOV e acompanha continuamente.
+-- A mudanca de camera e local; nao modifica a trajetoria validada no servidor.
+local function targetData(camera, other, keepLocked)
+    if other == localPlayer or (settings.teamCheck and isFriend(other)) then
+        return nil
+    end
+    local char, hum, root = validCharacter(other)
     if not char then return nil end
-    local part=aimPart(char)
+    local part = aimPart(char)
     if not part or not part:IsA("BasePart") then return nil end
-    local world=part.Position + root.AssemblyLinearVelocity * settings.lead
-    local range=(world-camera.CFrame.Position).Magnitude
-    if range>settings.range or range<1 then return nil end
-    local screen,visible=camera:WorldToViewportPoint(world)
-    if not visible or screen.Z<=0 then return nil end
-    local center=camera.ViewportSize*0.5
-    local pixels=(Vector2.new(screen.X,screen.Y)-center).Magnitude
-    if pixels>settings.fov then return nil end
-    if not canSee(camera,char,world) then return nil end
-    return {player=other,point=world,pixels=pixels}
+    local world = part.Position + root.AssemblyLinearVelocity * settings.lead
+    local range = (world - camera.CFrame.Position).Magnitude
+    if range > settings.range or range < 1 then return nil end
+    local screen, visible = camera:WorldToViewportPoint(world)
+    if not visible or screen.Z <= 0 then return nil end
+    local center = camera.ViewportSize * 0.5
+    local pixels = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+    local maxFov = settings.fov * (keepLocked and 1.7 or 1)
+    if pixels > maxFov then return nil end
+    if not canSee(camera, char, world) then return nil end
+    return {player = other, point = world, pixels = pixels}
 end
 local function selectTarget(camera)
     if settings.stickyAim and currentTarget then
-        local d=targetData(camera,currentTarget)
+        local d = targetData(camera, currentTarget, true)
         if d then return d end
     end
-    local best=nil
-    for _,other in ipairs(Players:GetPlayers()) do
-        local data=targetData(camera,other)
-        if data and (not best or data.pixels<best.pixels) then best=data end
+    local best = nil
+    for _, other in ipairs(Players:GetPlayers()) do
+        local data = targetData(camera, other, false)
+        if data and (not best or data.pixels < best.pixels) then
+            best = data
+        end
     end
     return best
 end
-
-local renderKey="SasukeTLF_Aim_"..tostring(localPlayer.UserId)
+local renderKey = "SasukeTLF_Aim_" .. tostring(localPlayer.UserId)
 local function aimTick(dt)
     if not running then return end
-    local camera=workspace.CurrentCamera
+    local camera = workspace.CurrentCamera
     if not camera then return end
-    if settings.aim and (aimPressed or mouseAiming) then
-        targetClock=targetClock+math.min(dt,0.1)
-        local scanDelay=settings.lowFX and 0.14 or 0.075
-        if targetClock>=scanDelay or not currentTarget then
-            targetClock=0
-            local chosen=selectTarget(camera)
-            currentTarget=chosen and chosen.player or nil
-        end
-        if currentTarget then
-            local d=targetData(camera,currentTarget)
-            if d then
-                local camPos=camera.CFrame.Position
-                local desire=CFrame.lookAt(camPos,d.point)
-                local blend=math.clamp(1-math.exp(-dt*(28/settings.smooth)),0.015,0.86)
-                camera.CFrame=camera.CFrame:Lerp(desire,blend)
-            else
-                currentTarget=nil
-            end
-        end
-    else
-        currentTarget=nil
+    if not settings.aim or not aimPressed then
+        currentTarget = nil
+        return
     end
+    targetClock = targetClock + math.min(dt, 0.1)
+    local scanDelay = settings.lowFX and 0.11 or 0.06
+    if targetClock >= scanDelay or not currentTarget then
+        targetClock = 0
+        local chosen = selectTarget(camera)
+        currentTarget = chosen and chosen.player or nil
+    end
+    if not currentTarget then return end
+    local data = targetData(camera, currentTarget, true)
+    if not data then
+        currentTarget = nil
+        return
+    end
+    local camPos = camera.CFrame.Position
+    if (data.point - camPos).Magnitude < 0.2 then return end
+    local desired = CFrame.lookAt(camPos, data.point)
+    local smooth = math.max(1, settings.smooth)
+    local blend = smooth <= 1 and 1 or math.clamp(
+        1 - math.exp(-math.min(dt, 0.1) * (85 / smooth)), 0.06, 1
+    )
+    camera.CFrame = camera.CFrame:Lerp(desired, blend)
 end
-local bindOK=pcall(function()
-    RunService:BindToRenderStep(renderKey,Enum.RenderPriority.Camera.Value+2,aimTick)
+local bindOK = pcall(function()
+    -- FPS pode alterar camera apos a prioridade padrao: usar LAST+1.
+    RunService:BindToRenderStep(renderKey, Enum.RenderPriority.Last.Value + 1, aimTick)
 end)
-if not bindOK then listen(RunService.RenderStepped,aimTick) end
+if not bindOK then listen(RunService.RenderStepped, aimTick) end
 
 local bottom=label(gui,"",11,colors.ink,{
     Position=UDim2.new(0,12,1,-24),Size=UDim2.fromOffset(430,20),
