@@ -1,4 +1,4 @@
--- SASUKE TLF HUB | SHARINGAN HORIZONTAL EDITION v1.0
+-- SASUKE TLF HUB | SHARINGAN HORIZONTAL EDITION v1.1
 -- The Lost Front | Client Luau (mobile + desktop)
 -- Camera Aim / FOV / ESP / Visual / Movement. Sem dependencias HTTP.
 -- NAO inclui alteracao de remotes de tiro (Silent Aim).
@@ -26,7 +26,7 @@ local colors = {
     muted = Color3.fromRGB(173, 157, 191),
     grey = Color3.fromRGB(82, 73, 98),
     enemy = Color3.fromRGB(251, 86, 103),
-    ally = Color3.fromRGB(89, 198, 244)
+    ally = Color3.fromRGB(65, 235, 105)
 }
 
 local defaults = {
@@ -41,10 +41,6 @@ local defaults = {
     stickyAim = true,
     headAim = true,
     esp = false,
-    espAllies = false,
-    espNames = true,
-    espDistance = true,
-    espHealth = true,
     speedOn = false,
     speed = 24,
     jumpOn = false,
@@ -54,7 +50,7 @@ local defaults = {
 }
 local settings = {}
 for key, value in pairs(defaults) do settings[key] = value end
-local configFile = "SasukeTLF_v1.json"
+local configFile = "SasukeTLF_v11.json"
 local supportsFiles = type(readfile) == "function" and type(writefile) == "function"
 if supportsFiles then
     local ok, data = pcall(function()
@@ -214,7 +210,7 @@ label(header, "SASUKE  //  THE LOST FRONT", 15, colors.ink, {
     Size=UDim2.fromOffset(330,21), Position=UDim2.fromOffset(56,4),
     Font=Enum.Font.GothamBold
 })
-label(header, "SHARINGAN EDITION   •   HORIZONTAL V1.0", 10, colors.muted, {
+label(header, "SHARINGAN EDITION   •   HORIZONTAL V1.1", 10, colors.muted, {
     Size=UDim2.fromOffset(340,18), Position=UDim2.fromOffset(56,25)
 })
 local function iconButton(text, x)
@@ -251,7 +247,7 @@ local pages, tabButtons = {}, {}
 local order = {"AIM", "ESP", "MOV", "VISUAL", "CONFIG"}
 local titles = {
     AIM={"AIM • SHARINGAN", "Prioridade: precisao e controle da camera"},
-    ESP={"ESP • INIMIGOS", "Marcadores locais; aliados opcionais"},
+    ESP={"ESP • HIGHLIGHT", "Verde: aliados • Vermelho: inimigos"},
     MOV={"MOVIMENTO", "Alteracoes locais; jogo pode restaurar valores"},
     VISUAL={"VISUAL", "Ajustes locais para visibilidade"},
     CONFIG={"CONFIGURACOES", "Economia de recursos e informacoes"}
@@ -449,13 +445,9 @@ action("AIM","PERFIL: COMBATE","FOV amplo para confrontos proximos","AGRESSIVO",
 end)
 info("AIM","BOTAO 'MIRA' NA TELA","Toque para travar; no PC mantenha o botao direito pressionado")
 
--- ESP
-toggle("ESP","ESP JOGADORES","Highlight atraves de estruturas do mapa","esp")
-toggle("ESP","MOSTRAR ALIADOS","Se desligado, mostra somente inimigos","espAllies")
-toggle("ESP","NOME DOS JOGADORES","Etiqueta no alto da cabeca","espNames")
-toggle("ESP","DISTANCIA","Distancia ate cada jogador em studs","espDistance")
-toggle("ESP","VIDA","Mostra vida atual na etiqueta","espHealth")
-info("ESP","IDENTIFICACAO POR TIME","Vermelho: inimigos | Azul: aliados")
+-- ESP: somente Highlight; sem nomes, distancia, HP, caixas ou tracers.
+toggle("ESP","HIGHLIGHT DOS JOGADORES","Aliados verdes e inimigos vermelhos","esp")
+info("ESP","VERDE = COMPANHEIRO","VERMELHO = INIMIGO • Visivel atraves de paredes")
 
 -- Movimento
 toggle("MOV","VELOCIDADE EXTRA","Altera a velocidade local do personagem","speedOn")
@@ -549,60 +541,38 @@ listen(minBtn.MouseButton1Click,function()
 end)
 
 local function deleteEsp(p)
-    local ob=espObjects[p]
+    local ob = espObjects[p]
     if ob then
-        pcall(function() ob.high:Destroy() end)
-        pcall(function() ob.tag:Destroy() end)
-        espObjects[p]=nil
+        if ob.high then pcall(function() ob.high:Destroy() end) end
+        espObjects[p] = nil
     end
 end
 local function showEsp(p)
-    local character, hum, root=validCharacter(p)
-    if not character or (isFriend(p) and not settings.espAllies) then
+    local character = validCharacter(p)
+    if not character then
         deleteEsp(p)
         return
     end
-    local ob=espObjects[p]
-    if ob and ob.character~=character then
+    local ob = espObjects[p]
+    if ob and (ob.character ~= character or not ob.high or not ob.high.Parent) then
         deleteEsp(p)
-        ob=nil
+        ob = nil
     end
     if not ob then
-        local high=create("Highlight",character,{
-            Name="SasukeTLF_ESP",Adornee=character,
-            DepthMode=Enum.HighlightDepthMode.AlwaysOnTop,
-            FillTransparency=0.78,OutlineTransparency=0.05
+        local high = create("Highlight", character, {
+            Name = "SasukeTLF_Highlight",
+            Adornee = character,
+            Enabled = true,
+            DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+            FillTransparency = 0.44,
+            OutlineTransparency = 0
         })
-        local head=character:FindFirstChild("Head") or root
-        local tag=create("BillboardGui",head,{
-            Name="SasukeTLF_Tag",Adornee=head,
-            Size=UDim2.fromOffset(180,44),StudsOffset=Vector3.new(0,3,0),
-            AlwaysOnTop=true,MaxDistance=1200
-        })
-        local text=label(tag,"",12,colors.ink,{
-            Size=UDim2.fromScale(1,1),BackgroundTransparency=0.28,
-            BackgroundColor3=colors.background,
-            TextXAlignment=Enum.TextXAlignment.Center,
-            TextYAlignment=Enum.TextYAlignment.Center,
-            Font=Enum.Font.GothamBold
-        })
-        round(text,8)
-        ob={character=character,high=high,tag=tag,text=text}
-        espObjects[p]=ob
+        ob = {character = character, high = high}
+        espObjects[p] = ob
     end
-    local friend=isFriend(p)
-    local c=friend and colors.ally or colors.enemy
-    ob.high.FillColor=c
-    ob.high.OutlineColor=c
-    ob.text.TextColor3=c
-    local me=localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local distance=me and math.floor((root.Position-me.Position).Magnitude) or 0
-    local pieces={}
-    if settings.espNames then table.insert(pieces,p.DisplayName) end
-    if settings.espDistance then table.insert(pieces,tostring(distance).." studs") end
-    if settings.espHealth then table.insert(pieces,tostring(math.ceil(hum.Health)).." HP") end
-    ob.tag.Enabled=#pieces>0
-    ob.text.Text=table.concat(pieces," | ")
+    local c = isFriend(p) and colors.ally or colors.enemy
+    ob.high.FillColor = c
+    ob.high.OutlineColor = c
 end
 
 -- Target lock; somente camera local e calculo de tela.
@@ -768,4 +738,4 @@ local function close()
     end
 end
 listen(exitBtn.MouseButton1Click,close)
-environment.SasukeTLF={Close=close,Version="1.0"}
+environment.SasukeTLF={Close=close,Version="1.1"}
