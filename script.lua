@@ -31,12 +31,12 @@ local colors = {
 
 local defaults = {
     aim = false,
-    fov = 155,
-    smooth = 5,
+    fov = 245,
+    smooth = 3,
     lead = 0.04,
-    range = 650,
+    range = 1100,
     showFov = true,
-    wallCheck = true,
+    wallCheck = false,
     teamCheck = true,
     stickyAim = true,
     headAim = true,
@@ -155,8 +155,10 @@ local function canSee(camera, character, worldPoint)
     local me = localPlayer.Character
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = me and {me} or {}
+    -- Nao bloquear a visao pela propria arma/viewmodel do FPS.
+    params.FilterDescendantsInstances = me and {me, camera} or {camera}
     params.IgnoreWater = true
+    params.RespectCanCollide = true
     local delta = worldPoint - camera.CFrame.Position
     if delta.Magnitude < 0.05 then return true end
     local hit = workspace:Raycast(camera.CFrame.Position, delta, params)
@@ -415,35 +417,40 @@ end)
 
 -- AIM: recomendacao para testes iniciais FOV 155 / Smooth 5 / Lead .04
 -- Os disparos podem ser determinados por camera de arma diferente e nao seguir a camera do Roblox.
-toggle("AIM","AIMBOT DA CAMERA","Ligar assistencia de mira para inimigos","aim",aimDisplay)
+toggle("AIM","AIMBOT AUTOMATICO","Ao ligar, ja comeca a acompanhar os inimigos","aim",function(enabled)
+    aimPressed = enabled
+    currentTarget = nil
+    targetClock = 0
+    aimDisplay()
+end)
 toggle("AIM","FOV VISIVEL","Circulo indicando area de aquisicao","showFov",aimDisplay)
-toggle("AIM","VERIFICAR PAREDES","Nao selecionar inimigos atras de obstaculos","wallCheck")
+toggle("AIM","VERIFICAR PAREDES","Opcional: pode bloquear a visao em alguns FPS","wallCheck")
 toggle("AIM","IGNORAR ALIADOS","Priorizar somente adversarios","teamCheck")
 toggle("AIM","ALVO FIXO","Evita trocas bruscas durante a mira","stickyAim")
 toggle("AIM","MIRAR NA CABECA","OFF: mira no tronco","headAim")
-stepper("AIM","TAMANHO DO FOV","Raio em pixels da tela", "fov",60,330,15,function(v) return tostring(v) end,aimDisplay)
+stepper("AIM","TAMANHO DO FOV","Raio em pixels da tela", "fov",60,470,15,function(v) return tostring(v) end,aimDisplay)
 stepper("AIM","SUAVIDADE","Menor = mais rapido; maior = mais suave","smooth",1,12,1)
 stepper("AIM","ANTECIPACAO","Compensa parte do movimento do alvo","lead",0,0.18,0.02,function(v)
     return string.format("%.2f",v)
 end)
 stepper("AIM","DISTANCIA MAXIMA","Limite de procura de inimigos","range",100,1500,100)
 action("AIM","PERFIL: PRECISAO","FOV menor e mira mais rapida","PRECISO",function()
-    settings.fov=110;settings.smooth=3;settings.lead=0.04
-    settings.wallCheck=true;settings.teamCheck=true
+    settings.fov=175;settings.smooth=2;settings.lead=0.04
+    settings.wallCheck=false;settings.teamCheck=true
     settings.headAim=true;settings.stickyAim=true
     for _,render in ipairs(redrawn) do render() end
     aimDisplay()
     save()
 end)
 action("AIM","PERFIL: COMBATE","FOV amplo para confrontos proximos","AGRESSIVO",function()
-    settings.fov=225;settings.smooth=2;settings.lead=0.08
-    settings.wallCheck=true;settings.teamCheck=true
+    settings.fov=330;settings.smooth=1;settings.lead=0.08
+    settings.wallCheck=false;settings.teamCheck=true
     settings.headAim=false;settings.stickyAim=true
     for _,render in ipairs(redrawn) do render() end
     aimDisplay()
     save()
 end)
-info("AIM","BOTAO 'MIRA' NA TELA","Toque para travar; no PC mantenha o botao direito pressionado")
+info("AIM","MIRA ATIVA AO LIGAR","Botao MIRA permite pausar e retomar")
 
 -- ESP: somente Highlight; sem nomes, distancia, HP, caixas ou tracers.
 toggle("ESP","HIGHLIGHT DOS JOGADORES","Aliados verdes e inimigos vermelhos","esp")
@@ -697,7 +704,7 @@ listen(RunService.Heartbeat,function(dt)
         updateScale()
         local txt=settings.aim and "AIM ARMADO" or "AIM OFF"
         if settings.aim and (aimPressed or mouseAiming) then
-            txt="MIRA ATIVA"..(currentTarget and (" • "..currentTarget.DisplayName) or " • BUSCANDO")
+            txt=currentTarget and "ACOMPANHANDO ALVO" or "BUSCANDO ALVO (FOV/EQUIPE)"
         end
         bottom.Text="◎ "..txt.."  |  ESP "..(settings.esp and "ON" or "OFF")
         aimDisplay()
